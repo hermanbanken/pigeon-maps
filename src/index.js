@@ -16,6 +16,7 @@ const PINCH_RELEASE_THROW_DELAY = 300
 const WARNING_DISPLAY_TIMEOUT = 300
 
 const NOOP = () => {}
+const defaultRotation = 0
 
 function wikimedia (x, y, z) {
   const retina = typeof window !== 'undefined' && window.devicePixelRatio >= 2
@@ -33,6 +34,16 @@ function tile2lng (x, z) {
 function tile2lat (y, z) {
   var n = Math.PI - 2 * Math.PI * y / Math.pow(2, z)
   return (180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))))
+}
+
+function rotate ([x, y], [xCenter, yCenter], angle) {
+  // http://benn.org/2007/01/06/rotating-coordinates-around-a-centre/
+  var sin = Math.sin(angle)
+  var cos = Math.cos(angle)
+  return [
+    xCenter + cos * (x - xCenter) - sin * (y - yCenter),
+    yCenter + sin * (x - xCenter) + cos * (y - yCenter)
+  ]
 }
 
 function getMousePixel (dom, event) {
@@ -78,6 +89,9 @@ export default class Map extends Component {
     height: PropTypes.number,
     defaultHeight: PropTypes.number,
 
+    rotation: PropTypes.number,
+    defaultRotation: PropTypes.number,
+
     provider: PropTypes.func,
     children: PropTypes.node,
 
@@ -122,6 +136,7 @@ export default class Map extends Component {
     animateMaxScreens: 5,
     minZoom: 1,
     maxZoom: 18,
+    rotation: defaultRotation,
     limitBounds: 'center'
   }
 
@@ -154,6 +169,7 @@ export default class Map extends Component {
     this.state = {
       zoom: this._lastZoom,
       center: this._lastCenter,
+      rotation: props.rotation || props.defaultRotation,
       width: props.width || props.defaultWidth,
       height: props.height || props.defaultHeight,
       zoomDelta: 0,
@@ -905,6 +921,8 @@ export default class Map extends Component {
   pixelToLatLng = (pixel, center = this.state.center, zoom = this.zoomPlusDelta()) => {
     const { width, height, pixelDelta } = this.state
 
+    pixel = rotate(pixel, [width / 2, height / 2], this.state.rotation)
+
     const pointDiff = [
       (pixel[0] - width / 2 - (pixelDelta ? pixelDelta[0] : 0)) / 256.0,
       (pixel[1] - height / 2 - (pixelDelta ? pixelDelta[1] : 0)) / 256.0
@@ -928,10 +946,12 @@ export default class Map extends Component {
     const tileX = lng2tile(latLng[1], zoom)
     const tileY = lat2tile(latLng[0], zoom)
 
-    return [
+    var pixel = [
       (tileX - tileCenterX) * 256.0 + width / 2 + (pixelDelta ? pixelDelta[0] : 0),
       (tileY - tileCenterY) * 256.0 + height / 2 + (pixelDelta ? pixelDelta[1] : 0)
     ]
+    pixel = rotate(pixel, [width / 2, height / 2], -this.state.rotation)
+    return pixel
   }
 
   calculateZoomCenter = (center, coords, oldZoom, newZoom) => {
@@ -1080,13 +1100,14 @@ export default class Map extends Component {
 
     const left = -((tileCenterX - tileMinX) * 256 - scaleWidth / 2)
     const top = -((tileCenterY - tileMinY) * 256 - scaleHeight / 2)
+    const rotation = this.state.rotation
 
     const tilesStyle = {
       position: 'absolute',
       width: (tileMaxX - tileMinX + 1) * 256,
       height: (tileMaxY - tileMinY + 1) * 256,
       willChange: 'transform',
-      transform: `translate(${left}px, ${top}px)`
+      transform: `translate(${left}px, ${top}px) rotateZ(${rotation}deg)`
     }
 
     return (
